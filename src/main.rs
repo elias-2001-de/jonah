@@ -59,24 +59,16 @@ fn main() -> anyhow::Result<()> {
 
     match &cli.command {
         Commands::Project(args) => {
-            let toml_str = fs::read_to_string(args.file.to_owned())?;
-            let config: Project = toml::from_str(&toml_str)?;
             extract_container(
-                config,
+                args.file.to_owned(),
                 args.out_path.to_owned(),
                 args.container_name.to_owned(),
                 args.image_name.to_owned(),
             )?;
         }
         Commands::Collection(args) => {
-            fs::create_dir_all(&args.temp_dir)?;
-
-            let toml_str = fs::read_to_string(args.file.to_owned())?;
-            let config: Collection = toml::from_str(&toml_str)?;
-            println!("{config:?}");
-
             run_collection(
-                config,
+                args.file.to_owned(),
                 args.out_path.to_owned(),
                 args.temp_dir.to_owned(),
                 args.container_name.to_owned(),
@@ -90,13 +82,18 @@ fn main() -> anyhow::Result<()> {
 }
 
 fn run_collection(
-    config: Collection,
+    config_path: String,
     out_path: String,
     temp_dir: String,
     container_name: String,
     image_name: String,
 ) -> anyhow::Result<()> {
+    let toml_str = fs::read_to_string(config_path)?;
+    let config: Collection = toml::from_str(&toml_str)?;
+
     config.validate()?;
+    fs::create_dir_all(&out_path)?;
+    fs::create_dir_all(&temp_dir)?;
 
     let mut git_urls = Vec::new();
     for project in &config.projects {
@@ -137,10 +134,8 @@ fn run_collection(
             } => (build_file.to_owned(), out_path.to_owned()),
         };
 
-        let toml_str = fs::read_to_string(build_file)?;
-        let config: Project = toml::from_str(&toml_str)?;
         extract_container(
-            config,
+            build_file,
             format!("{out_path}/{out_path_internal}"),
             container_name.clone(),
             image_name.clone(),
@@ -196,15 +191,29 @@ fn get_git(git_url: &String, run_cmd: bool, temp_dir: &String) -> anyhow::Result
 }
 
 fn extract_container(
-    config: Project,
+    config_file: String,
     out_path: String,
     container_name: String,
     image_name: String,
 ) -> anyhow::Result<()> {
+    let toml_str = fs::read_to_string(&config_file)?;
+    let config: Project = toml::from_str(&toml_str)?;
+
+    fs::create_dir_all(&out_path)?;
+
+    let mut path = config_file.split("/").collect::<Vec<_>>();
+    path.pop();
+
+    let path = std::env::current_dir()?.join(path.join("/"));
+
+    println!("{path:?}");
+    println!("{out_path}");
+
     // 1. Build the Docker image
     println!("🛠️  Building Docker image...");
     let status = Command::new("docker")
         .args(["build", "-t", &image_name, "-f", &config.docker, "."])
+        .current_dir(path)
         .status()?;
     if !status.success() {
         eprintln!("❌ Docker build failed!");
