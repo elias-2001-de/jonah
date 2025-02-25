@@ -3,5 +3,6 @@
 Dockerfile
 logo.png
 README.md
-example.toml
+website.toml
 jonah_build.toml
+/website

@@ -2,27 +2,28 @@ git_base = "https://github.com/eelias13/"
 
 
 [[projects]]
+git_rel = "jonah"
 build_file = "./jonah_build.toml"
 out_path = "./jonah"
 
+[[projects]]
+git_rel = "open-gal"
+build_file = "jonah_editor.toml"
+out_path = "."
+
+[[projects]]
+git_rel = "open-gal"
+build_file = "jonah_cli.toml"
+out_path = "./open-gal/cli"
+
+
 # [[projects]]
-# rel_git = "open-gal"
-# build_file = "editor/jonah_build.toml"
-# out_path = "open-gal"
-# 
-# [[projects]]
-# rel_git = "open-gal"
-# build_file = "cli/jonah_build.toml"
-# out_path = "open-gal/cli"
-#
-#
-# [[projects]]
-# rel_git = "astro-spotlight"
+# git_rel = "astro-spotlight"
 # build_file = "jonah_build.toml"
 # out_path = "."
 # 
 # [[projects]]
-# rel_git = "func-checker"
+# git_rel = "func-checker"
 # build_file = "jonah_build.toml"
 # out_path = "func-checker"
 #

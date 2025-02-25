@@ -9,7 +9,7 @@ pub struct Collection {
 
 impl Collection {
     pub fn validate(&self) -> anyhow::Result<()> {
-        if self.git_base.is_none() {
+        if !self.git_base.is_none() {
             return Ok(());
         }
 

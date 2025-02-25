@@ -6,7 +6,6 @@ use std::path::Path;
 use std::process::Command;
 
 mod parse_config;
-//   mod url;
 
 #[derive(Parser)]
 #[command(name = "jonah")]
@@ -24,6 +23,7 @@ enum Commands {
     Project(ProjectArgs),
     /// Build a collection of projects
     Collection(ProjectArgs),
+    /// removes all the files and containers
     Clean(CleanArgs),
 }
 #[derive(Args)]
@@ -31,6 +31,10 @@ struct CleanArgs {
     /// Temporary directory used during the build process (default: /tmp/jonah)
     #[arg(long, default_value = "/tmp/jonah")]
     temp_dir: String,
+
+    /// Docker image name (default: jonah-build-image)
+    #[arg(long, default_value = "jonah-build-image")]
+    image_name: String,
 }
 
 #[derive(Args)]
@@ -50,11 +54,12 @@ struct ProjectArgs {
     /// Temporary directory used during the build process (default: /tmp/jonah)
     #[arg(long, default_value = "/tmp/jonah")]
     temp_dir: String,
+
+    #[arg(long, default_value = "true")]
+    print_cmd: bool,
 }
 
 fn main() -> anyhow::Result<()> {
-    //    fs::create_dir_all(TEMP_DIR)?;
-
     let cli = Cli::parse();
 
     match &cli.command {
@@ -64,6 +69,7 @@ fn main() -> anyhow::Result<()> {
                 args.out_path.to_owned(),
                 args.container_name.to_owned(),
                 args.image_name.to_owned(),
+                args.print_cmd,
             )?;
         }
         Commands::Collection(args) => {
@@ -73,6 +79,7 @@ fn main() -> anyhow::Result<()> {
                 args.temp_dir.to_owned(),
                 args.container_name.to_owned(),
                 args.image_name.to_owned(),
+                args.print_cmd,
             )?;
         }
         Commands::Clean(args) => fs::remove_dir_all(args.temp_dir.to_owned())?,
@@ -87,6 +94,7 @@ fn run_collection(
     temp_dir: String,
     container_name: String,
     image_name: String,
+    print_cmd: bool,
 ) -> anyhow::Result<()> {
     let toml_str = fs::read_to_string(config_path)?;
     let config: Collection = toml::from_str(&toml_str)?;
@@ -95,7 +103,6 @@ fn run_collection(
     fs::create_dir_all(&out_path)?;
     fs::create_dir_all(&temp_dir)?;
 
-    let mut git_urls = Vec::new();
     for project in &config.projects {
         let (build_file, out_path_internal) = match project {
             ProjectInfo::GitRel {
@@ -107,12 +114,19 @@ fn run_collection(
                     unreachable!("due to validate");
                 };
 
-                let url = format!("{base}/{git_rel}");
+                let url = match (base.ends_with("/"), git_rel.starts_with("/")) {
+                    (true, true) => {
+                        let mut base = base.chars().collect::<Vec<_>>();
+                        assert_eq!(base.pop(), Some('/'));
+                        let base = base.iter().collect::<String>();
+                        format!("{base}{git_rel}")
+                    }
+                    (false, true) => format!("{base}{git_rel}"),
+                    (true, false) => format!("{base}{git_rel}"),
+                    (false, false) => format!("{base}/{git_rel}"),
+                };
 
-                let dir = get_git(&url, !git_urls.contains(&url), &temp_dir)?;
-                if !git_urls.contains(&url) {
-                    git_urls.push(url);
-                }
+                let dir = get_git(&url, &temp_dir, print_cmd)?;
 
                 (format!("{dir}/{build_file}"), out_path.to_owned())
             }
@@ -121,10 +135,7 @@ fn run_collection(
                 build_file,
                 out_path,
             } => {
-                let dir = get_git(git_url, !git_urls.contains(git_url), &temp_dir)?;
-                if !git_urls.contains(git_url) {
-                    git_urls.push(git_url.to_owned())
-                }
+                let dir = get_git(git_url, &temp_dir, print_cmd)?;
 
                 (format!("{dir}/{build_file}"), out_path.to_owned())
             }
@@ -139,13 +150,14 @@ fn run_collection(
             format!("{out_path}/{out_path_internal}"),
             container_name.clone(),
             image_name.clone(),
+            print_cmd,
         )?;
     }
 
     return Ok(());
 }
 
-fn get_git(git_url: &String, run_cmd: bool, temp_dir: &String) -> anyhow::Result<String> {
+fn get_git(git_url: &String, temp_dir: &String, print_cmd: bool) -> anyhow::Result<String> {
     let temp = git_url
         .split("/")
         .map(|x| x.to_string())
@@ -179,12 +191,33 @@ fn get_git(git_url: &String, run_cmd: bool, temp_dir: &String) -> anyhow::Result
         path.extend(name.chars());
     }
 
-    println!("git clone {git_url} {path}");
+    let p = Path::new(&path);
+    if p.exists() && p.is_dir() {
+        // git fetch
+        let mut cmd = Command::new("git");
+        cmd.args(["fetch", "--depth", "1", "origin"])
+            .current_dir(&path);
+        if print_cmd {
+            println!("🏃 {:?}", cmd);
+        }
+        cmd.status()?;
 
-    if run_cmd {
-        Command::new("git")
-            .args(["clone", &git_url, &path, "--depth", "1"])
-            .status()?;
+        // git reset
+        let mut cmd = Command::new("git");
+        cmd.args(["reset", "--hard", "origin/HEAD"])
+            .current_dir(&path);
+        if print_cmd {
+            println!("🏃 {:?}", cmd);
+        }
+        cmd.status()?;
+    } else {
+        // git clone
+        let mut cmd = Command::new("git");
+        cmd.args(["clone", &git_url, &path, "--depth", "1"]);
+        if print_cmd {
+            println!("🏃 {:?}", cmd);
+        }
+        cmd.status()?;
     }
 
     return Ok(path);
@@ -195,6 +228,7 @@ fn extract_container(
     out_path: String,
     container_name: String,
     image_name: String,
+    print_cmd: bool,
 ) -> anyhow::Result<()> {
     let toml_str = fs::read_to_string(&config_file)?;
     let config: Project = toml::from_str(&toml_str)?;
@@ -206,15 +240,16 @@ fn extract_container(
 
     let path = std::env::current_dir()?.join(path.join("/"));
 
-    println!("{path:?}");
-    println!("{out_path}");
-
     // 1. Build the Docker image
     println!("🛠️  Building Docker image...");
-    let status = Command::new("docker")
-        .args(["build", "-t", &image_name, "-f", &config.docker, "."])
-        .current_dir(path)
-        .status()?;
+    let mut cmd = Command::new("docker");
+    cmd.args(["build", "-t", &image_name, "-f", &config.docker, "."])
+        .current_dir(path);
+    if print_cmd {
+        println!("🏃 {:?}", cmd);
+    }
+    let status = cmd.status()?;
+
     if !status.success() {
         eprintln!("❌ Docker build failed!");
         return Err(anyhow::anyhow!("Docker build failed"));
@@ -222,9 +257,13 @@ fn extract_container(
 
     // 2. Run the container
     println!("🚀 Running Docker container...");
-    let status = Command::new("docker")
-        .args(["create", "--name", &container_name, &image_name])
-        .status()?;
+    let mut cmd = Command::new("docker");
+
+    cmd.args(["create", "--name", &container_name, &image_name]);
+    if print_cmd {
+        println!("🏃 {:?}", cmd);
+    }
+    let status = cmd.status()?;
     if !status.success() {
         eprintln!("❌ Failed to start the container!");
         return Err(anyhow::anyhow!("Failed to start the container"));
@@ -241,13 +280,17 @@ fn extract_container(
         let destination = format!("{out_path}/{}", export.name);
         println!("📦 Extracting {} -> {}", export.path, destination);
 
-        let status = Command::new("docker")
-            .args([
-                "cp",
-                &format!("{}:{}", container_name, export.path),
-                &destination,
-            ])
-            .status()?;
+        let mut cmd = Command::new("docker");
+
+        cmd.args([
+            "cp",
+            &format!("{}:{}", container_name, export.path),
+            &destination,
+        ]);
+        if print_cmd {
+            println!("🏃 {:?}", cmd);
+        }
+        let status = cmd.status()?;
         if !status.success() {
             eprintln!("❌ Failed to copy {}", export.path);
         }
@@ -255,14 +298,13 @@ fn extract_container(
 
     // 4. Cleanup: Stop and remove the container
     println!("🧹 Cleaning up...");
-    // Command::new("docker")
-    //    .args(["stop", &container_name])
-    //    .output()
-    //    .ok();
-    Command::new("docker")
-        .args(["rm", &container_name])
-        .output()
-        .ok();
+
+    let mut cmd = Command::new("docker");
+    cmd.args(["rm", &container_name]);
+    if print_cmd {
+        println!("🏃 {:?}", cmd);
+    }
+    cmd.output().ok();
 
     println!("✅ Build and extraction complete!");
     Ok(())
