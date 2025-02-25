@@ -1,87 +1,26 @@
-name: Rust Multi-Target Build and Release
+name: Release
 
 on:
   push:
     tags:
-      - "v*"
-  workflow_dispatch:
+      - "v*.*.*"  # Trigger on version tags (e.g., v1.0.0)
 
 jobs:
   build:
-    name: Build for multiple targets
     runs-on: ubuntu-latest
-
-    strategy:
-      matrix:
-        target: [
-          "x86_64-unknown-linux-musl",
-          # "aarch64-unknown-linux-musl",
-          "x86_64-pc-windows-gnu",
-          "x86_64-apple-darwin"
-          #"aarch64-apple-darwin"
-        ]
-
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v3
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: ${{ matrix.target }}
-
-      - name: Install dependencies
-        run: |
-          sudo apt-get update && sudo apt-get install -y musl-tools zip
-
-      - name: Install Zig
-        run: |
-          ZIG_VERSION="0.13.0"
-          wget https://ziglang.org/download/${ZIG_VERSION}/zig-linux-x86_64-${ZIG_VERSION}.tar.xz
-          tar -xf zig-linux-x86_64-${ZIG_VERSION}.tar.xz
-          sudo mv zig-linux-x86_64-${ZIG_VERSION} /opt/zig
-          sudo ln -s /opt/zig/zig /usr/local/bin/zig
-
-      - name: Install cargo-zigbuild
-        run: cargo install cargo-zigbuild
-
-      - name: Fetch dependencies
-        run: cargo fetch
 
       - name: Build project
-        run: cargo zigbuild --release --target ${{ matrix.target }}
-
-      - name: Package binary
-        run: |
-          BIN_NAME=$(basename $(cargo metadata --no-deps --format-version 1 | jq -r '.packages[0].targets[0].name'))
-          mkdir -p artifacts
-          if [[ "${{ matrix.target }}" == *"windows"* ]]; then
-            zip artifacts/${BIN_NAME}-${{ matrix.target }}.zip target/${{ matrix.target }}/release/${BIN_NAME}.exe
-          else
-            tar -czf artifacts/${BIN_NAME}-${{ matrix.target }}.tar.gz -C target/${{ matrix.target }}/release ${BIN_NAME}
-          fi
-
-      - name: Upload build artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: build-artifacts
-          path: artifacts/
-
-  release:
-    name: Create GitHub Release
-    needs: build
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Download build artifacts
-        uses: actions/download-artifact@v4
-        with:
-          name: build-artifacts
-          path: artifacts/
+        run: cargo build --release
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v1
         with:
-          files: artifacts/*
+          files: target/release/my_project
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
