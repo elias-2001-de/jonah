@@ -4,7 +4,11 @@ on:
   push:
     tags:
       - "v*.*.*"  # Trigger on version tags (e.g., v1.0.0)
-
+permissions:
+  contents: write  # Allows creating releases & modifying repository contents
+  packages: write  # Allows publishing Rust crates, npm, Docker images, etc.
+  issues: write    # Allows opening & modifying issues
+  
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -23,4 +27,4 @@ jobs:
         with:
           files: target/release/jonah
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.DEPLOY_TOKEN }}
