@@ -259,7 +259,7 @@ fn extract_container(
     println!("🚀 Running Docker container...");
     let mut cmd = Command::new("docker");
 
-    cmd.args(["create", "--name", &container_name, &image_name]);
+    cmd.args(["create", &image_name]); // "--name", &container_name,
     if print_cmd {
         println!("🏃 {:?}", cmd);
     }
@@ -268,6 +268,9 @@ fn extract_container(
         eprintln!("❌ Failed to start the container!");
         return Err(anyhow::anyhow!("Failed to start the container"));
     }
+
+    let docker_id = String::from_utf8(cmd.output()?.stdout)?;
+    let docker_id = docker_id.trim();
 
     // Ensure the output directory exists
     let output_dir = Path::new(&out_path);
@@ -284,7 +287,7 @@ fn extract_container(
 
         cmd.args([
             "cp",
-            &format!("{}:{}", container_name, export.path),
+            &format!("{}:{}", docker_id, export.path),
             &destination,
         ]);
         if print_cmd {
