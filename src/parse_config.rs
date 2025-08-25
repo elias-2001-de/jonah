@@ -88,6 +88,7 @@ impl<'de> Deserialize<'de> for ProjectInfo {
 pub struct Project {
     pub docker: String,
     pub exports: Vec<Export>,
+    pub create_host_dirs: Vec<String>,
 }
 
 #[derive(Debug, Deserialize)]

@@ -234,6 +234,9 @@ fn extract_container(
     let config: Project = toml::from_str(&toml_str)?;
 
     fs::create_dir_all(&out_path)?;
+    for host_dir in config.create_host_dirs {
+        fs::create_dir_all(&host_dir)?;
+    }
 
     let mut path = config_file.split("/").collect::<Vec<_>>();
     path.pop();
