@@ -2,7 +2,7 @@ use anyhow::anyhow;
 use clap::{Args, Parser, Subcommand};
 use parse_config::{Collection, Project, ProjectInfo};
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
 mod parse_config;
@@ -235,7 +235,7 @@ fn extract_container(
 
     fs::create_dir_all(&out_path)?;
     for host_dir in config.create_host_dirs {
-        fs::create_dir_all(&host_dir)?;
+        fs::create_dir_all(&PathBuf::from(&out_path).join(&host_dir))?;
     }
 
     let mut path = config_file.split("/").collect::<Vec<_>>();
